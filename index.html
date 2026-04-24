@@ -559,6 +559,88 @@
     }
     .nav-btn.active .nav-dot { opacity: 1; }
 
+    /* ── Environment card ────────────────────────────────────── */
+    .env-btn {
+      width: 100%;
+      padding: 13px;
+      border-radius: 10px;
+      border: 1.5px solid var(--accent);
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+      -webkit-tap-highlight-color: transparent;
+      margin-bottom: 12px;
+    }
+
+    .env-btn:active  { opacity: .8; transform: scale(.98); }
+    .env-btn.fetching { opacity: .6; cursor: not-allowed; }
+
+    .env-btn.captured {
+      border-color: var(--green);
+      background: rgba(74,222,128,.1);
+      color: var(--green);
+    }
+
+    #envError {
+      display: none;
+      font-size: 12px;
+      color: var(--red);
+      background: rgba(248,113,113,.08);
+      border: 1px solid rgba(248,113,113,.2);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: -4px;
+      margin-bottom: 4px;
+    }
+
+    #envPreview {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .env-stat {
+      background: var(--surface2);
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    /* GPS stat spans full width */
+    .env-stat:first-child { grid-column: 1 / -1; }
+
+    .env-label {
+      font-size: 11px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .env-val {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .env-sub  { font-size: 11px; color: var(--text3); }
+
+    .env-good     { color: var(--green); }
+    .env-moderate { color: var(--yellow); }
+    .env-poor     { color: #fb923c; }
+    .env-bad      { color: var(--red); }
+
+    .maps-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
     /* ── Delete modal ────────────────────────────────────────── */
     #deleteModal {
       display: none;
@@ -735,6 +817,14 @@
         </div>
         <input type="text" class="input-field" id="otherMed"
                placeholder="Other medication (type here)">
+      </div>
+
+      <!-- Location & Air Quality -->
+      <div class="card">
+        <div class="card-title">🌍 Location & Air Quality</div>
+        <button class="env-btn" id="captureEnvBtn">📍 Capture Location & Conditions</button>
+        <div id="envError"></div>
+        <div id="envPreview"></div>
       </div>
 
       <!-- Notes -->
