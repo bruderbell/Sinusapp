@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0b1120">
+  <title>Sinus Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+  <style>
+    /* ── Reset & variables ─────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0b1120;
+      --surface:    #111827;
+      --surface2:   #1a2438;
+      --border:     rgba(99,120,160,.18);
+      --accent:     #38bdf8;
+      --accent2:    #0ea5e9;
+      --accent-dim: rgba(56,189,248,.12);
+      --text:       #e2e8f0;
+      --text2:      #94a3b8;
+      --text3:      #64748b;
+      --red:        #f87171;
+      --yellow:     #fbbf24;
+      --green:      #4ade80;
+      --radius:     14px;
+      --nav-h:      68px;
+      --safe-b:     env(safe-area-inset-bottom, 0px);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      overscroll-behavior: none;
+    }
+
+    /* ── App shell ─────────────────────────────────────────── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      max-width: 480px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    /* ── Screens ───────────────────────────────────────────── */
+    .screen {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+    .screen.active { display: flex; }
+
+    .screen-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px calc(var(--nav-h) + var(--safe-b) + 16px);
+      scrollbar-width: none;
+    }
+    .screen-scroll::-webkit-scrollbar { display: none; }
+
+    /* ── Page header ────────────────────────────────────────── */
+    .page-header {
+      padding: 52px 20px 0;
+      flex-shrink: 0;
+    }
+
+    .page-header h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+      background: linear-gradient(135deg, var(--accent), #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .page-header p {
+      color: var(--text2);
+      font-size: 13px;
+      margin-top: 2px;
+      margin-bottom: 20px;
+    }
+
+    /* ── Cards ──────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--text2);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Location chips ─────────────────────────────────────── */
+    .chip-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .loc-chip {
+      padding: 7px 14px;
+      border-radius: 100px;
+      border: 1.5px solid var(--border);
+      background: transparent;
+      color: var(--text2);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all .15s ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .loc-chip:active { transform: scale(.95); }
+
+    .loc-chip.selected {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* ── Severity slider ─────────────────────────────────────── */
+    .severity-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .severity-num {
+      font-family: 'Syne', sans-serif;
+      font-size: 42px;
+      font-weight: 800;
+      line-height: 1;
+      min-width: 52px;
+      color: var(--green);
+      transition: color .2s;
+    }
+
+    .severity-labels {
+      flex: 1;
+    }
+
+    .severity-labels small {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text3);
+      margin-top: 6px;
+    }
+
+    .slider-track {
+      position: relative;
+      height: 6px;
+      background: var(--surface2);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .slider-fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      border-radius: 99px;
+      width: 0%;
+      transition: width .1s, background .3s;
+      background: linear-gradient(90deg, var(--green), var(--green));
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: transparent;
+      position: relative;
+      z-index: 1;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--thumb-color, var(--accent));
+      border: 3px solid var(--bg);
+      box-shadow: 0 0 0 1px var(--thumb-color, var(--accent));
+      margin-top: -8px;
+      transition: background .2s, box-shadow .2s;
+    }
+
+    input[type=range]::-webkit-slider-runnable-track {
+      height: 6px;
+      background: transparent;
+    }
+
+    .slider-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    /* ── Toggle ─────────────────────────────────────────────── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .toggle-text { flex: 1; }
+    .toggle-text strong { display: block; font-weight: 500; }
+    .toggle-text small { color: var(--text2); font-size: 12px; }
+
+    .toggle {
+      position: relative;
+      width: 50px;
+      height: 28px;
+      flex-shrink: 0;
+    }
+
+    .toggle input { opacity: 0; width: 0; height: 0; }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      border-radius: 99px;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      transition: background .2s, border-color .2s;
+      cursor: pointer;
+    }
+
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--text3);
+      top: 2px;
+      left: 2px;
+      transition: transform .2s, background .2s;
+    }
+
+    .toggle input:checked + .toggle-track {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+    }
+
+    .toggle input:checked + .toggle-track::after {
+      background: var(--accent);
+      transform: translateX(22px);
+    }
+
+    /* ── Med checkboxes ─────────────────────────────────────── */
+    .med-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-bottom: 14px;
+    }
+
+    .med-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background .12s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .med-item:active { background: var(--surface2); }
+
+    .med-item input[type=checkbox] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      border: 2px solid var(--border);
+      background: transparent;
+      flex-shrink: 0;
+      cursor: pointer;
+      position: relative;
+      transition: all .15s;
+    }
+
+    .med-item input[type=checkbox]:checked {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .med-item input[type=checkbox]:checked::after {
+      content: '';
+      position: absolute;
+      left: 5px;
+      top: 2px;
+      width: 5px;
+      height: 9px;
+      border: 2px solid #000;
+      border-top: none;
+      border-left: none;
+      transform: rotate(45deg);
+    }
+
+    .med-name { font-size: 14px; }
+    .med-sub  { font-size: 11px; color: var(--text3); display: block; }
+
+    /* ── Text inputs ─────────────────────────────────────────── */
+    .input-field {
+      width: 100%;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      padding: 12px 14px;
+      outline: none;
+      transition: border-color .15s;
+      resize: none;
+      -webkit-appearance: none;
+    }
+
+    .input-field::placeholder { color: var(--text3); }
+    .input-field:focus { border-color: var(--accent); }
+
+    textarea.input-field { min-height: 90px; }
+
+    /* ── Save button ─────────────────────────────────────────── */
+    .save-btn {
+      width: 100%;
+      padding: 16px;
+      border-radius: var(--radius);
+      border: none;
+      background: linear-gradient(135deg, var(--accent2), #6366f1);
+      color: #fff;
+      font-family: 'Syne', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      margin-top: 4px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .save-btn:active { transform: scale(.98); opacity: .9; }
+
+    .save-btn.saved {
+      background: linear-gradient(135deg, #166534, #15803d);
+    }
+
+    /* ── History ─────────────────────────────────────────────── */
+    .history-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 0 12px;
+    }
+
+    .export-btn {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      color: var(--text2);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      padding: 7px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: border-color .15s, color .15s;
+    }
+
+    .export-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    #historyEmpty {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      gap: 10px;
+      padding-bottom: var(--nav-h);
+      color: var(--text3);
+    }
+
+    #historyEmpty .empty-icon {
+      font-size: 52px;
+      line-height: 1;
+    }
+
+    #historyEmpty strong {
+      font-family: 'Syne', sans-serif;
+      font-size: 17px;
+      color: var(--text2);
+    }
+
+    .entry-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      animation: fadeIn .25s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .entry-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .entry-date {
+      font-family: 'Syne', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .delete-btn {
+      background: none;
+      border: none;
+      color: var(--text3);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      transition: color .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .delete-btn:hover { color: var(--red); }
+
+    .entry-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 10px 0;
+    }
+
+    .entry-row {
+      display: flex;
+      gap: 10px;
+      font-size: 13px;
+      margin-bottom: 5px;
+    }
+
+    .entry-label {
+      color: var(--text3);
+      min-width: 80px;
+      flex-shrink: 0;
+      font-size: 12px;
+      padding-top: 1px;
+    }
+
+    .entry-val { color: var(--text2); }
+
+    .sev-none     { color: var(--text3); }
+    .sev-mild     { color: var(--green); }
+    .sev-moderate { color: var(--yellow); }
+    .sev-severe   { color: var(--red); }
+
+    .entry-notes { color: var(--text3); font-style: italic; font-size: 12px; }
+
+    /* ── Bottom nav ──────────────────────────────────────────── */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 480px;
+      height: calc(var(--nav-h) + var(--safe-b));
+      background: rgba(11,17,32,.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      padding-top: 8px;
+      z-index: 100;
+    }
+
+    .nav-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      background: none;
+      border: none;
+      color: var(--text3);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 4px 0;
+      transition: color .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .nav-btn svg { transition: transform .15s; }
+    .nav-btn.active { color: var(--accent); }
+    .nav-btn.active svg { transform: scale(1.12); }
+
+    .nav-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0;
+      transition: opacity .15s;
+      margin-top: -2px;
+    }
+    .nav-btn.active .nav-dot { opacity: 1; }
+
+    /* ── Delete modal ────────────────────────────────────────── */
+    #deleteModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.6);
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity .2s;
+    }
+
+    #deleteModal.visible { opacity: 1; }
+
+    .modal-sheet {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px 20px 0 0;
+      padding: 28px 24px 40px;
+      width: 100%;
+      max-width: 480px;
+      transform: translateY(20px);
+      transition: transform .2s;
+    }
+
+    #deleteModal.visible .modal-sheet { transform: translateY(0); }
+
+    .modal-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .modal-sub {
+      color: var(--text2);
+      font-size: 13px;
+      margin-bottom: 24px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .modal-cancel {
+      flex: 1;
+      padding: 13px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    .modal-delete {
+      flex: 1;
+      padding: 13px;
+      border-radius: 10px;
+      border: none;
+      background: var(--red);
+      color: #fff;
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── LOG SCREEN ────────────────────────────────────────── -->
+  <div class="screen active" data-screen="log">
+    <div class="page-header">
+      <h1>Sinus Tracker</h1>
+      <p>How are you feeling right now?</p>
+    </div>
+
+    <div class="screen-scroll">
+
+      <!-- Pain Location -->
+      <div class="card">
+        <div class="card-title">📍 Pain Location</div>
+        <div class="chip-grid">
+          <button class="loc-chip" data-loc="Forehead">Forehead</button>
+          <button class="loc-chip" data-loc="Left Cheek">Left Cheek</button>
+          <button class="loc-chip" data-loc="Right Cheek">Right Cheek</button>
+          <button class="loc-chip" data-loc="Bridge / Nose">Bridge / Nose</button>
+          <button class="loc-chip" data-loc="Behind Left Eye">Behind Left Eye</button>
+          <button class="loc-chip" data-loc="Behind Right Eye">Behind Right Eye</button>
+          <button class="loc-chip" data-loc="Jaw / Upper Teeth">Jaw / Upper Teeth</button>
+          <button class="loc-chip" data-loc="Top of Head">Top of Head</button>
+        </div>
+      </div>
+
+      <!-- Severity -->
+      <div class="card">
+        <div class="card-title">🌡️ Pain Severity</div>
+        <div class="severity-row">
+          <div id="severityDisplay" class="severity-num">0</div>
+          <div class="severity-labels">
+            <div class="slider-wrapper">
+              <div class="slider-track">
+                <div class="slider-fill" id="sliderFill"></div>
+              </div>
+              <input type="range" id="severity" min="0" max="10" value="0">
+            </div>
+            <small>
+              <span>No pain</span>
+              <span>Worst</span>
+            </small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Daily Allergy Pill -->
+      <div class="card">
+        <div class="card-title">💊 Daily Allergy Pill</div>
+        <div class="toggle-row">
+          <div class="toggle-text">
+            <strong>Took allergy pill today</strong>
+            <small>Claritin, Allegra, Xyzal, Zyrtec daily…</small>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="allergyToggle">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Other Medications -->
+      <div class="card">
+        <div class="card-title">🏥 Other Medications</div>
+        <div class="med-list">
+          <label class="med-item">
+            <input type="checkbox" class="med-check" value="Flonase">
+            <div>
+              <span class="med-name">Flonase / Fluticasone</span>
+              <span class="med-sub">Nasal corticosteroid spray</span>
+            </div>
+          </label>
+          <label class="med-item">
+            <input type="checkbox" class="med-check" value="Sudafed">
+            <div>
+              <span class="med-name">Sudafed / Pseudoephedrine</span>
+              <span class="med-sub">Oral decongestant</span>
+            </div>
+          </label>
+          <label class="med-item">
+            <input type="checkbox" class="med-check" value="Ibuprofen">
+            <div>
+              <span class="med-name">Ibuprofen / Advil</span>
+              <span class="med-sub">NSAID pain relief</span>
+            </div>
+          </label>
+          <label class="med-item">
+            <input type="checkbox" class="med-check" value="Benadryl">
+            <div>
+              <span class="med-name">Benadryl / Diphenhydramine</span>
+              <span class="med-sub">Antihistamine</span>
+            </div>
+          </label>
+          <label class="med-item">
+            <input type="checkbox" class="med-check" value="Nasal Rinse">
+            <div>
+              <span class="med-name">Nasal Rinse / Neti Pot</span>
+              <span class="med-sub">Saline irrigation</span>
+            </div>
+          </label>
+        </div>
+        <input type="text" class="input-field" id="otherMed"
+               placeholder="Other medication (type here)">
+      </div>
+
+      <!-- Notes -->
+      <div class="card">
+        <div class="card-title">📝 Notes</div>
+        <textarea class="input-field" id="notes"
+                  placeholder="Triggers, weather, barometric pressure changes, activities…"
+                  rows="3"></textarea>
+      </div>
+
+      <button class="save-btn" id="saveBtn">Save Entry</button>
+
+    </div><!-- /scroll -->
+  </div><!-- /log screen -->
+
+  <!-- ── HISTORY SCREEN ────────────────────────────────────── -->
+  <div class="screen" data-screen="history">
+    <div class="page-header">
+      <h1>History</h1>
+      <p>Your past sinus entries</p>
+    </div>
+
+    <div class="screen-scroll">
+      <div class="history-actions">
+        <button class="export-btn" id="exportBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Export CSV
+        </button>
+      </div>
+
+      <div id="historyEmpty">
+        <div class="empty-icon">🫁</div>
+        <strong>No entries yet</strong>
+        <span>Start logging from the Log tab</span>
+      </div>
+
+      <div id="historyList"></div>
+
+    </div>
+  </div><!-- /history screen -->
+
+  <!-- ── Bottom Nav ─────────────────────────────────────────── -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-target="log">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+      </svg>
+      Log
+      <div class="nav-dot"></div>
+    </button>
+    <button class="nav-btn" data-target="history">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 3h18v18H3z" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>
+        <line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/>
+      </svg>
+      History
+      <div class="nav-dot"></div>
+    </button>
+  </nav>
+
+  <!-- ── Delete Modal ───────────────────────────────────────── -->
+  <div id="deleteModal">
+    <div class="modal-sheet">
+      <div class="modal-title">Delete Entry?</div>
+      <div class="modal-sub">This will permanently remove the entry from <strong id="deleteModalDate"></strong>.</div>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="deleteCancelBtn">Cancel</button>
+        <button class="modal-delete" id="deleteConfirmBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<script src="app.js"></script>
+</body>
+</html>
