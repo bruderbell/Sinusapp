@@ -1,27 +1,27 @@
 // ── Storage ───────────────────────────────────────────────────────────
-const DB_KEY = 'sinusEntries';
+const DB_KEY      = 'sinusEntries';
+const API_KEY_KEY = 'tomorrowApiKey';
 
 function loadEntries() {
   try { return JSON.parse(localStorage.getItem(DB_KEY)) || []; }
   catch { return []; }
 }
-
 function saveEntries(entries) {
   localStorage.setItem(DB_KEY, JSON.stringify(entries));
 }
-
 function addEntry(entry) {
   const entries = loadEntries();
-  entry.id = Date.now().toString();
+  entry.id        = Date.now().toString();
   entry.timestamp = Date.now();
   entries.unshift(entry);
   saveEntries(entries);
   return entry;
 }
-
 function deleteEntry(id) {
   saveEntries(loadEntries().filter(e => e.id !== id));
 }
+function loadApiKey()       { return localStorage.getItem(API_KEY_KEY) || ''; }
+function saveApiKey(key)    { localStorage.setItem(API_KEY_KEY, key.trim()); }
 
 // ── State ─────────────────────────────────────────────────────────────
 const state = {
@@ -30,9 +30,9 @@ const state = {
   severity: 0,
   tookAllergyPill: false,
   medications: new Set(),
-  gps: null,        // { lat, lng, accuracy }
-  envData: null,    // fetched from Open-Meteo
-  envStatus: 'idle' // 'idle' | 'fetching' | 'done' | 'done-gps-only' | 'error'
+  gps:       null,
+  envData:   null,
+  envStatus: 'idle'
 };
 
 // ── DOM helpers ───────────────────────────────────────────────────────
@@ -46,6 +46,7 @@ function showScreen(name) {
   document.querySelectorAll('.nav-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.target === name));
   if (name === 'history') renderHistory();
+  if (name === 'settings') initSettingsScreen();
 }
 
 // ── Severity slider ───────────────────────────────────────────────────
@@ -53,24 +54,21 @@ function initSlider() {
   const slider  = $('severity');
   const display = $('severityDisplay');
   const fill    = $('sliderFill');
-
   function update() {
     const v = parseInt(slider.value);
     state.severity = v;
     display.textContent = v;
-    const hue = v === 0 ? 145 : Math.round(145 - v * 14.5);
+    const hue   = v === 0 ? 145 : Math.round(145 - v * 14.5);
     const color = `hsl(${hue}, 80%, 55%)`;
     display.style.color = color;
-    fill.style.width = `${v * 10}%`;
+    fill.style.width      = `${v * 10}%`;
     fill.style.background = `linear-gradient(90deg, hsl(145,70%,45%), ${color})`;
     slider.style.setProperty('--thumb-color', color);
   }
-
   slider.addEventListener('input', update);
   update();
 }
 
-// ── Chips / checkboxes / toggle ───────────────────────────────────────
 function initLocationChips() {
   document.querySelectorAll('.loc-chip').forEach(chip => {
     chip.addEventListener('click', () => {
@@ -90,7 +88,7 @@ function initMedCheckboxes() {
   document.querySelectorAll('.med-check').forEach(cb => {
     cb.addEventListener('change', () => {
       if (cb.checked) state.medications.add(cb.value);
-      else state.medications.delete(cb.value);
+      else            state.medications.delete(cb.value);
     });
   });
 }
@@ -101,8 +99,29 @@ function initAllergyToggle() {
   });
 }
 
-// ── GPS + Environment capture ─────────────────────────────────────────
+// ── Settings screen ───────────────────────────────────────────────────
+function initSettingsScreen() {
+  const input  = $('apiKeyInput');
+  const status = $('apiKeyStatus');
+  input.value  = loadApiKey();
+  status.textContent = '';
+}
 
+function saveApiKeyFromForm() {
+  const key    = $('apiKeyInput').value.trim();
+  const status = $('apiKeyStatus');
+  if (!key) {
+    status.textContent = '⚠️ Please enter a key first.';
+    status.className   = 'settings-status error';
+    return;
+  }
+  saveApiKey(key);
+  status.textContent = '✓ API key saved!';
+  status.className   = 'settings-status success';
+  setTimeout(() => status.textContent = '', 3000);
+}
+
+// ── AQI helpers (Open-Meteo) ──────────────────────────────────────────
 function aqiInfo(aqi) {
   if (aqi == null) return { label: '—', cls: '' };
   if (aqi <= 50)  return { label: `${aqi} — Good`,                  cls: 'env-good' };
@@ -112,29 +131,35 @@ function aqiInfo(aqi) {
   return                 { label: `${aqi} — Very Unhealthy`,        cls: 'env-bad' };
 }
 
-function pollenLabel(val, type) {
-  if (val == null) return '—';
-  const v = Math.round(val);
-  const t = { grass: [1,5,20,200], tree: [1,15,90,1500], ragweed: [1,10,50,500] }[type] || [1,5,20,200];
-  if (v < t[0]) return `None (${v})`;
-  if (v < t[1]) return `Low (${v})`;
-  if (v < t[2]) return `Moderate (${v})`;
-  if (v < t[3]) return `High (${v})`;
-  return `Very High (${v})`;
+// ── Pollen helpers (Tomorrow.io index 0–5) ────────────────────────────
+//
+// Tomorrow.io returns a pollen *index* on a 0–5 scale, not raw grain counts.
+// 0 = None, 1 = Very Low, 2 = Low, 3 = Medium, 4 = High, 5 = Very High
+//
+function pollenLabel(index) {
+  if (index == null) return '—';
+  const labels = ['None', 'Very Low', 'Low', 'Medium', 'High', 'Very High'];
+  return labels[Math.round(index)] ?? `${index}`;
 }
 
-function pollenClass(val, type) {
-  if (!val || val < 1) return 'env-good';
-  const t = { grass: [5,20,200], tree: [15,90,1500], ragweed: [10,50,500] }[type] || [5,20,200];
-  if (val < t[0]) return 'env-good';
-  if (val < t[1]) return 'env-moderate';
-  if (val < t[2]) return 'env-poor';
+function pollenClass(index) {
+  if (index == null || index === 0) return 'env-good';
+  if (index <= 1) return 'env-good';
+  if (index <= 2) return 'env-moderate';
+  if (index <= 3) return 'env-poor';
   return 'env-bad';
 }
 
+// ── Environment capture ───────────────────────────────────────────────
 async function captureEnvironment() {
   if (!navigator.geolocation) {
     setEnvStatus('error', 'Geolocation not supported by this browser.');
+    return;
+  }
+
+  const apiKey = loadApiKey();
+  if (!apiKey) {
+    setEnvStatus('error', 'No Tomorrow.io API key found. Tap ⚙️ Settings to add it.');
     return;
   }
 
@@ -161,36 +186,70 @@ async function captureEnvironment() {
   const { latitude: lat, longitude: lng, accuracy } = position.coords;
   state.gps = { lat, lng, accuracy: Math.round(accuracy) };
 
-  // Step 2: Open-Meteo Air Quality + Pollen (free, no API key)
+  // Run both API calls in parallel
+  const [aqiResult, pollenResult] = await Promise.allSettled([
+    fetchAirQuality(lat, lng),
+    fetchPollen(lat, lng, apiKey)
+  ]);
+
+  state.envData = {
+    // Open-Meteo AQI
+    usAqi: aqiResult.status === 'fulfilled' ? aqiResult.value.usAqi : null,
+    pm25:  aqiResult.status === 'fulfilled' ? aqiResult.value.pm25  : null,
+    pm10:  aqiResult.status === 'fulfilled' ? aqiResult.value.pm10  : null,
+    // Tomorrow.io pollen indices (0–5)
+    grassPollen:   pollenResult.status === 'fulfilled' ? pollenResult.value.grassPollen   : null,
+    treePollen:    pollenResult.status === 'fulfilled' ? pollenResult.value.treePollen    : null,
+    weedPollen:    pollenResult.status === 'fulfilled' ? pollenResult.value.weedPollen    : null,
+    pollenSource:  pollenResult.status === 'fulfilled' ? 'Tomorrow.io' : 'unavailable'
+  };
+
+  setEnvStatus(
+    aqiResult.status === 'fulfilled' || pollenResult.status === 'fulfilled'
+      ? 'done'
+      : 'done-gps-only'
+  );
+}
+
+async function fetchAirQuality(lat, lng) {
   const params = new URLSearchParams({
     latitude:  lat.toFixed(4),
     longitude: lng.toFixed(4),
-    current:   'us_aqi,pm2_5,pm10,grass_pollen,birch_pollen,ragweed_pollen'
+    current:   'us_aqi,pm2_5,pm10'
   });
-
-  try {
-    const res  = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${params}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const c    = data.current;
-
-    state.envData = {
-      usAqi:         c.us_aqi         ?? null,
-      pm25:          c.pm2_5          ?? null,
-      pm10:          c.pm10           ?? null,
-      grassPollen:   c.grass_pollen   ?? null,
-      treePollen:    c.birch_pollen   ?? null,
-      ragweedPollen: c.ragweed_pollen ?? null
-    };
-
-    setEnvStatus('done');
-  } catch {
-    // GPS worked but air data failed (probably offline)
-    state.envData = null;
-    setEnvStatus('done-gps-only');
-  }
+  const res = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${params}`);
+  if (!res.ok) throw new Error(`AQI HTTP ${res.status}`);
+  const data = await res.json();
+  return {
+    usAqi: data.current?.us_aqi ?? null,
+    pm25:  data.current?.pm2_5  ?? null,
+    pm10:  data.current?.pm10   ?? null
+  };
 }
 
+async function fetchPollen(lat, lng, apiKey) {
+  // Tomorrow.io realtime endpoint — returns indices 0–5 for tree, grass, weed pollen
+  const params = new URLSearchParams({
+    location: `${lat.toFixed(4)},${lng.toFixed(4)}`,
+    fields:   'treeIndex,grassIndex,weedIndex',
+    apikey:   apiKey,
+    units:    'metric'
+  });
+  const res = await fetch(`https://api.tomorrow.io/v4/weather/realtime?${params}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `Pollen HTTP ${res.status}`);
+  }
+  const data   = await res.json();
+  const values = data.data?.values ?? {};
+  return {
+    treePollen:  values.treeIndex  ?? null,
+    grassPollen: values.grassIndex ?? null,
+    weedPollen:  values.weedIndex  ?? null
+  };
+}
+
+// ── Env status / preview UI ───────────────────────────────────────────
 function setEnvStatus(status, errorMsg) {
   state.envStatus = status;
   const btn     = $('captureEnvBtn');
@@ -218,14 +277,13 @@ function setEnvStatus(status, errorMsg) {
     return;
   }
 
-  // done or done-gps-only
   btn.disabled    = false;
   btn.textContent = '✓ Captured — tap to refresh';
   btn.className   = 'env-btn captured';
 
   const gps = state.gps;
   const d   = state.envData;
-  const aqi = d ? aqiInfo(d.usAqi) : null;
+  const aqi = d?.usAqi != null ? aqiInfo(d.usAqi) : null;
 
   preview.style.display = 'grid';
   preview.innerHTML = `
@@ -234,31 +292,37 @@ function setEnvStatus(status, errorMsg) {
       <span class="env-val">${gps.lat.toFixed(4)}, ${gps.lng.toFixed(4)}</span>
       <span class="env-sub">±${gps.accuracy}m accuracy</span>
     </div>
-    ${d ? `
+    ${d?.usAqi != null ? `
     <div class="env-stat">
       <span class="env-label">🌬️ US AQI</span>
       <span class="env-val ${aqi.cls}">${aqi.label}</span>
-      <span class="env-sub">PM2.5: ${d.pm25 != null ? d.pm25.toFixed(1) : '—'} · PM10: ${d.pm10 != null ? d.pm10.toFixed(1) : '—'} µg/m³</span>
-    </div>
+      <span class="env-sub">PM2.5: ${d.pm25?.toFixed(1) ?? '—'} · PM10: ${d.pm10?.toFixed(1) ?? '—'} µg/m³</span>
+    </div>` : `
+    <div class="env-stat">
+      <span class="env-label">🌬️ AQI</span>
+      <span class="env-val env-moderate">Unavailable</span>
+      <span class="env-sub">Check connection</span>
+    </div>`}
+    ${d?.grassPollen != null ? `
     <div class="env-stat">
       <span class="env-label">🌿 Grass</span>
-      <span class="env-val ${pollenClass(d.grassPollen,'grass')}">${pollenLabel(d.grassPollen,'grass')}</span>
-      <span class="env-sub">grains/m³</span>
+      <span class="env-val ${pollenClass(d.grassPollen)}">${pollenLabel(d.grassPollen)}</span>
+      <span class="env-sub">Tomorrow.io index</span>
     </div>
     <div class="env-stat">
       <span class="env-label">🌲 Tree</span>
-      <span class="env-val ${pollenClass(d.treePollen,'tree')}">${pollenLabel(d.treePollen,'tree')}</span>
-      <span class="env-sub">grains/m³</span>
+      <span class="env-val ${pollenClass(d.treePollen)}">${pollenLabel(d.treePollen)}</span>
+      <span class="env-sub">Tomorrow.io index</span>
     </div>
     <div class="env-stat">
-      <span class="env-label">🌾 Ragweed</span>
-      <span class="env-val ${pollenClass(d.ragweedPollen,'ragweed')}">${pollenLabel(d.ragweedPollen,'ragweed')}</span>
-      <span class="env-sub">grains/m³</span>
+      <span class="env-label">🌾 Weed</span>
+      <span class="env-val ${pollenClass(d.weedPollen)}">${pollenLabel(d.weedPollen)}</span>
+      <span class="env-sub">Tomorrow.io index</span>
     </div>` : `
     <div class="env-stat">
-      <span class="env-label">⚠️ Air Data</span>
-      <span class="env-val env-moderate">Offline — GPS saved only</span>
-      <span class="env-sub">Connect to internet for air quality</span>
+      <span class="env-label">🌿 Pollen</span>
+      <span class="env-val env-moderate">Unavailable</span>
+      <span class="env-sub">Check API key in Settings</span>
     </div>`}
   `;
 }
@@ -269,7 +333,7 @@ function saveEntry() {
   const other = $('otherMed').value.trim();
   if (other) meds.push(other);
 
-  const entry = {
+  addEntry({
     painLocations:   [...state.selectedLocations],
     severity:        state.severity,
     tookAllergyPill: state.tookAllergyPill,
@@ -277,9 +341,8 @@ function saveEntry() {
     notes:           $('notes').value.trim(),
     gps:             state.gps     ? { ...state.gps }     : null,
     envData:         state.envData ? { ...state.envData } : null
-  };
+  });
 
-  addEntry(entry);
   showSaveFlash();
   resetForm();
 }
@@ -288,10 +351,7 @@ function showSaveFlash() {
   const btn = $('saveBtn');
   btn.textContent = '✓ Saved!';
   btn.classList.add('saved');
-  setTimeout(() => {
-    btn.textContent = 'Save Entry';
-    btn.classList.remove('saved');
-  }, 1800);
+  setTimeout(() => { btn.textContent = 'Save Entry'; btn.classList.remove('saved'); }, 1800);
 }
 
 function resetForm() {
@@ -349,27 +409,23 @@ function renderHistory() {
   empty.style.display = 'none';
 
   container.innerHTML = entries.map(e => {
-    const sev  = severityLabel(e.severity);
-    const locs = e.painLocations?.length
-      ? e.painLocations.join(' · ')
-      : 'No location recorded';
-
-    const medList = [];
+    const sev      = severityLabel(e.severity);
+    const locs     = e.painLocations?.length ? e.painLocations.join(' · ') : 'No location recorded';
+    const medList  = [];
     if (e.tookAllergyPill) medList.push('Allergy pill ✓');
     medList.push(...(e.medications || []));
     const medsText = medList.length ? medList.join(', ') : 'No medications';
 
-    // Environment rows
     let envHtml = '';
     if (e.gps) {
-      const mapsUrl = `https://maps.google.com/?q=${e.gps.lat},${e.gps.lng}`;
-      const d = e.envData;
-      const aqiStr = d?.usAqi != null
+      const mapsUrl  = `https://maps.google.com/?q=${e.gps.lat},${e.gps.lng}`;
+      const d        = e.envData;
+      const aqiStr   = d?.usAqi != null
         ? `AQI ${d.usAqi} · PM2.5 ${d.pm25?.toFixed(1) ?? '—'} · PM10 ${d.pm10?.toFixed(1) ?? '—'}`
         : 'Air data unavailable';
-      const pollenStr = d
-        ? `Grass: ${pollenLabel(d.grassPollen,'grass')} · Tree: ${pollenLabel(d.treePollen,'tree')} · Ragweed: ${pollenLabel(d.ragweedPollen,'ragweed')}`
-        : '';
+      const pollenStr = d?.grassPollen != null
+        ? `Grass: ${pollenLabel(d.grassPollen)} · Tree: ${pollenLabel(d.treePollen)} · Weed: ${pollenLabel(d.weedPollen)}`
+        : 'Pollen data unavailable';
 
       envHtml = `
         <div class="entry-row">
@@ -382,10 +438,10 @@ function renderHistory() {
           <span class="entry-label">🌬️ Air</span>
           <span class="entry-val">${aqiStr}</span>
         </div>
-        ${pollenStr ? `<div class="entry-row">
+        <div class="entry-row">
           <span class="entry-label">🌿 Pollen</span>
           <span class="entry-val">${pollenStr}</span>
-        </div>` : ''}`;
+        </div>`;
     }
 
     return `
@@ -456,15 +512,13 @@ function exportCSV() {
     'Date', 'Severity', 'Pain Locations', 'Allergy Pill', 'Medications', 'Notes',
     'Latitude', 'Longitude', 'GPS Accuracy (m)',
     'US AQI', 'PM2.5 (µg/m³)', 'PM10 (µg/m³)',
-    'Grass Pollen (gr/m³)', 'Tree Pollen (gr/m³)', 'Ragweed Pollen (gr/m³)',
+    'Grass Pollen (0-5)', 'Tree Pollen (0-5)', 'Weed Pollen (0-5)',
     'Google Maps Link'
   ]];
 
   entries.forEach(e => {
     const g = e.gps     || {};
     const d = e.envData || {};
-    const mapsUrl = g.lat ? `https://maps.google.com/?q=${g.lat},${g.lng}` : '';
-
     rows.push([
       formatDate(e.timestamp),
       e.severity,
@@ -472,16 +526,16 @@ function exportCSV() {
       e.tookAllergyPill ? 'Yes' : 'No',
       (e.medications   || []).join('; '),
       (e.notes || '').replace(/"/g, '""'),
-      g.lat           ?? '',
-      g.lng           ?? '',
-      g.accuracy      ?? '',
-      d.usAqi         ?? '',
-      d.pm25          ?? '',
-      d.pm10          ?? '',
-      d.grassPollen   ?? '',
-      d.treePollen    ?? '',
-      d.ragweedPollen ?? '',
-      mapsUrl
+      g.lat        ?? '',
+      g.lng        ?? '',
+      g.accuracy   ?? '',
+      d.usAqi      ?? '',
+      d.pm25       ?? '',
+      d.pm10       ?? '',
+      d.grassPollen ?? '',
+      d.treePollen  ?? '',
+      d.weedPollen  ?? '',
+      g.lat ? `https://maps.google.com/?q=${g.lat},${g.lng}` : ''
     ]);
   });
 
@@ -505,6 +559,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('captureEnvBtn').addEventListener('click', captureEnvironment);
   $('saveBtn').addEventListener('click', saveEntry);
   $('exportBtn').addEventListener('click', exportCSV);
+  $('saveApiKeyBtn').addEventListener('click', saveApiKeyFromForm);
   $('deleteConfirmBtn').addEventListener('click', confirmDeleteAction);
   $('deleteCancelBtn').addEventListener('click', closeModal);
   $('deleteModal').addEventListener('click', ev => {
